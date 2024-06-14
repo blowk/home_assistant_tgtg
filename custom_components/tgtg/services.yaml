@@ -1,0 +1,13 @@
+set_interval:
+  description: "Set the update interval for TGTG sensors."
+  fields:
+    seconds:
+      description: "The interval in seconds between updates."
+      example: 300
+
+enable_updates:
+  description: "Enable or disable updates for TGTG sensors."
+  fields:
+    enabled:
+      description: "True to enable updates, False to disable."
+      example: true
