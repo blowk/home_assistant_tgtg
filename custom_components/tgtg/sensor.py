@@ -2,35 +2,23 @@
 from __future__ import annotations
 import logging
 import voluptuous as vol
+from datetime import timedelta
 
 from tgtg import TgtgClient
 
 from homeassistant.components.sensor import SensorEntity, PLATFORM_SCHEMA
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_EMAIL
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.event import async_track_time_interval
 
-DOMAIN = "tgtg"
-CONF_ITEM = "item"
-CONF_REFRESH_TOKEN = "refresh_token"
-CONF_USER_ID = "user_id"
-CONF_COOKIE = "cookie"
-CONF_USER_AGENT = "user_agent"
-ATTR_ITEM_ID = "item_id"
-ATTR_ITEM_URL = "item_url"
-ATTR_PRICE = "item_price"
-ATTR_VALUE = "original_value"
-ATTR_PICKUP_START = "pickup_start"
-ATTR_PICKUP_END = "pickup_end"
-ATTR_SOLDOUT_TIMESTAMP = "soldout_timestamp"
-ATTR_ORDERS_PLACED = "orders_placed"
-ATTR_TOTAL_QUANTITY_ORDERED = "total_quantity_ordered"
-ATTR_PICKUP_WINDOW_CHANGED = "pickup_window_changed"
-ATTR_CANCEL_UNTIL = "cancel_until"
+from .const import DOMAIN, CONF_SECONDS, CONF_ENABLED, CONF_ITEM, CONF_REFRESH_TOKEN, CONF_USER_ID, CONF_COOKIE, CONF_USER_AGENT, ATTR_ITEM_ID, ATTR_ITEM_URL, ATTR_PRICE, ATTR_VALUE, ATTR_PICKUP_START, ATTR_PICKUP_END, ATTR_SOLDOUT_TIMESTAMP, ATTR_ORDERS_PLACED, ATTR_TOTAL_QUANTITY_ORDERED, ATTR_PICKUP_WINDOW_CHANGED, ATTR_CANCEL_UNTIL
+
 _LOGGER = logging.getLogger(DOMAIN)
 
+DEFAULT_INTERVAL = timedelta(seconds=600)  # default to 10 minutes
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
@@ -64,8 +52,6 @@ def setup_platform(
     user_agent = config[CONF_USER_AGENT]
 
     global tgtg_client
-
-    # Log in with tokens
     tgtg_client = TgtgClient(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -75,14 +61,24 @@ def setup_platform(
         language="en-GB",
     )
 
-    # If item: isn't defined, use favorites - otherwise use defined items
+    sensors = []
+
     if item != [""]:
         for each_item_id in item:
-            add_entities([TGTGSensor(each_item_id)])
+            sensors.append(TGTGSensor(each_item_id))
     else:
         tgtgReply = tgtg_client.get_items()
         for item in tgtgReply:
-            add_entities([TGTGSensor(item["item"]["item_id"])])
+            sensors.append(TGTGSensor(item["item"]["item_id"]))
+
+    add_entities(sensors)
+
+    async def update_all_sensors(event_time):
+        if hass.data[DOMAIN]["update_enabled"]:
+            for sensor in sensors:
+                sensor.async_schedule_update_ha_state(True)
+
+    async_track_time_interval(hass, update_all_sensors, timedelta(seconds=hass.data[DOMAIN]["update_interval"]))
 
 
 class TGTGSensor(SensorEntity):
